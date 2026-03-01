@@ -47,14 +47,14 @@
             TrapDoors = New Point(bound, bound) {}
             For Y = 0 To bound
                 For X = 0 To bound
-                    TrapDoors(X, Y) = New Point(16 * X + 8, 16 * Y + 8)
+                    TrapDoors(X, Y) = New Point(size * (4 * X + 2), size * (4 * Y + 2))
                 Next
             Next
             gasTraps = New Rectangle(bound, bound, 1) {}
             For Y = 0 To bound
                 For X = 0 To bound
-                    gasTraps(X, Y, 0) = New Rectangle(4 * (4 * X + 1), 4 * 4 * Y + 8, 8, 4)
-                    gasTraps(X, Y, 1) = New Rectangle(4 * 4 * Y + 8, 4 * (4 * X + 1), 4, 8)
+                    gasTraps(X, Y, 0) = New Rectangle(size * (4 * X + 1), size * (4 * Y + 2), size * 2, size)
+                    gasTraps(X, Y, 1) = New Rectangle(size * (4 * X + 2), size * (4 * Y + 1), size, size * 2)
                 Next
             Next
         End If
@@ -161,11 +161,7 @@
     End Sub
 
     Public Function hasGT(gameX As Integer, gameY As Integer) As Boolean
-        Dim target As Point = toMaz(gameX, gameY)
-        If display.GetPixel(target.X, target.Y).ToArgb = My.Settings.gastrap.ToArgb Then
-            Return True
-        End If
-        Return False
+        Return isGT(gameX, gameY)
     End Function
     Public Sub drawGT(gameX As Integer, gameY As Integer, col As Drawing.Color)
         Dim target As Point = toMaz(gameX, gameY)
