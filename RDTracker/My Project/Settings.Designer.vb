@@ -56,7 +56,7 @@ Namespace My
         
         <Global.System.Configuration.UserScopedSettingAttribute(),  _
          Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
-         Global.System.Configuration.DefaultSettingValueAttribute("406568")>  _
+         Global.System.Configuration.DefaultSettingValueAttribute("607204")>  _
         Public Property PlayerX() As Integer
             Get
                 Return CType(Me("PlayerX"),Integer)
