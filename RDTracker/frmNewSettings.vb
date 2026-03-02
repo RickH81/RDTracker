@@ -275,7 +275,6 @@
         dummysettings = Nothing
     End Sub
     Private Sub cmbColorType_SelectedIndexChanged(sender As ComboBox, e As EventArgs) Handles cmbColorType.SelectedIndexChanged
-        Debug.Print($"color:{sender.SelectedItem}:{Hex(colors(sender.SelectedItem).ToArgb And &HFFFFFF)}")
         updateColorButton(colors(sender.SelectedItem))
     End Sub
     Private Sub btnColorPicker_Click(sender As Object, e As EventArgs) Handles btnColorPicker.Click

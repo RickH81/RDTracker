@@ -353,6 +353,18 @@ Namespace My
                 Me("SingleInstance") = value
             End Set
         End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("607204")>  _
+        Public Property Mem() As Integer
+            Get
+                Return CType(Me("Mem"),Integer)
+            End Get
+            Set
+                Me("Mem") = value
+            End Set
+        End Property
     End Class
 End Namespace
 

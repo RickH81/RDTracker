@@ -33,6 +33,20 @@ Public Class frmMain
         Me.Location = My.Settings.Location
         Me.TopMost = My.Settings.Topmost
 
+        ' Initialize default Mem (key) setting if not set
+        If My.Settings.Mem = 0 Then
+            My.Settings.Mem = 607204
+            My.Settings.Save()
+        End If
+
+        ' Initialize Maze display with proper size accounting for control bar - make square
+        Dim squareSize As Integer = Me.ClientSize.Width
+        Dim displayHeight As Integer = squareSize - 25
+        Maze.ResizeDisplay(squareSize, If(displayHeight > 0, displayHeight, 241))
+        
+        ' Ensure window is square
+        Me.ClientSize = New System.Drawing.Size(squareSize, squareSize)
+        
         Me.BackgroundImage = Maze.display
         Me.lblEnter.BackColor = My.Settings.background
         Me.BackColor = My.Settings.background
@@ -125,19 +139,8 @@ Public Class frmMain
         End If
 
     End Sub
-    <StructLayout(LayoutKind.Sequential, CharSet:=CharSet.Auto, Pack:=0)>
-    Structure MoacSharedMem
-        Dim pID As UInt32
-        Dim hp, shield, [end], mana As Byte
-        Dim base As UInt64
-        Dim key, isprite, offX, offY As Integer
-        Dim flags, fsprite As Integer
-        Dim swapped As Byte
-    End Structure
+
     Private shm As MoacSharedMem
-    'Dim brushWhite As New SolidBrush(Color.White)
-    'Dim brushRed As New SolidBrush(Color.Red)
-    'Dim brushCyan As New SolidBrush(Color.Cyan)
     Dim ptZero As New Point(0, 0)
     Dim prevP As New Point(0, 0)
     Dim gameX, gameY As Integer
@@ -214,11 +217,7 @@ Public Class frmMain
             End If
         End If
 
-        'Debug.Print($"xy:{gameX}/{gameY}")
-
-
         If wasArea AndAlso Not Maze.isLobby(gameX, gameY) Then
-            ' hack to prevent messing up map when changing area
             Exit Sub
         End If
         If gameX <= 0 OrElse gameY <= 0 OrElse gameX >= 255 OrElse gameY >= 255 Then
@@ -254,11 +253,25 @@ Public Class frmMain
         End If
         prevP = newP
 
-
-
-        Dim radius As Integer = 8
+        Dim radius As Integer = 11
         'If My.Settings.V2 Then
         Dim gtInRange As Boolean = False
+        
+        ' Based on memory scan, sprites are at offset -60 from base iSprite address
+        Dim spriteOffset As Integer = -60
+        Dim spriteAddr As Integer = My.Settings.iSprite + spriteOffset
+        
+        ' Log first occurrence of actual sprite data
+        Static logged As Boolean = False
+        If Not logged Then
+            Dim testSprite As Integer = _memManager.ReadInt32(spriteAddr, True)
+            If testSprite <> 0 Then
+                System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rdtracker_debug.txt"), 
+                    $"[SUCCESS] Found sprite data at offset -60! Value={testSprite}" & vbCrLf)
+                logged = True
+            End If
+        End If
+        
         For dX = -radius To radius
             Dim cX As Integer = prevP.X + dX
             If Not isValidMapUnit(cX) Then
@@ -269,85 +282,65 @@ Public Class frmMain
                 If Not isValidMapUnit(cY) Then
                     Continue For
                 End If
+                
                 Dim offset As Integer
                 If isSDL Then
                     offset = (shm.offX * dX) + (shm.offX * shm.offY * dY)
                 Else
                     offset = (My.Settings.OffsetXY.X * dX) + (My.Settings.OffsetXY.X * My.Settings.OffsetXY.Y * dY)
                 End If
-
-                'Dim gsprite As Integer = _memManager.ReadInt32(My.Settings.iSprite - 16 + offset)
-                'Dim gsprite2 As Integer = _memManager.ReadInt32(My.Settings.iSprite - 12 + offset)
-                'Dim fsprite As Integer = _memManager.ReadInt32(My.Settings.iSprite - 8 + offset)
+                
                 Dim isprite As Integer
                 Dim flags As Integer
                 Dim fsprite2 As Integer
+                Dim gsprite As Integer
                 If isSDL Then
                     isprite = _memManager.ReadIntWoW64(shm.base + shm.isprite + offset)
                     flags = _memManager.ReadIntWoW64(shm.base + shm.isprite + offset + shm.flags)
                     fsprite2 = _memManager.ReadIntWoW64(shm.base + shm.isprite + offset + shm.fsprite)
-                    If dX = 0 AndAlso dY = 0 Then
-                        Debug.Print($"isprite {isprite}")
-                    End If
+                    gsprite = _memManager.ReadIntWoW64(shm.base + shm.isprite + offset - 8)
                 Else
-                    isprite = _memManager.ReadInt32(My.Settings.iSprite + offset, True)
-                    flags = _memManager.ReadInt32(My.Settings.iSprite + offset + My.Settings.flagsOffset, True) ' 12
-                    fsprite2 = _memManager.ReadInt32(My.Settings.iSprite + offset + My.Settings.fSprite2Offset, True) '-4
+                    isprite = _memManager.ReadInt32(spriteAddr + offset, True)
+                    flags = _memManager.ReadInt32(spriteAddr + offset + My.Settings.flagsOffset, True)
+                    fsprite2 = _memManager.ReadInt32(spriteAddr + offset + My.Settings.fSprite2Offset, True)
+                    gsprite = _memManager.ReadInt32(spriteAddr + offset - 8, True)
                 End If
 
-                If (flags And &H10) = 0 Then Continue For 'not visible
-
-
-                If fsprite2 <> 0 AndAlso sameSpot(prevP) Then
-                    Select Case fsprite2
-                        Case 15291, 15300
-                            If Not Maze.hasGT(cX, cY) Then
-                                If My.Settings.sysBeepOnGT Then Beep()
-                                Maze.drawGT(cX, cY, My.Settings.gastrap)
-                            End If
-                            gtInRange = True
-                        Case Is < 6553600 'draw wall?
-                            Maze.drawWall(cX, cY, My.Settings.walls)
-                    End Select
+                ' Debug: log any non-zero sprite at nearby grid positions
+                ' Log all squares in a 2x2 area (4x4 block) around the player, regardless of sprite values
+                If (dX >= -1 AndAlso dX <= 2 AndAlso dY >= -1 AndAlso dY <= 2) Then
+                    Dim debugMsg = $"Sprite rel({dX},{dY}) abs({cX},{cY}): isprite={isprite}, fsprite2={fsprite2}, gsprite={gsprite}, flags={flags:X}"
+                    System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rdtracker_debug.txt"), debugMsg & vbCrLf)
                 End If
-                If isprite <> 0 AndAlso sameSpot(prevP) Then
-                    Select Case isprite
-                        Case 15272 'trapdoor netosw open
-                            Maze.drawTD(cX, cY, True, True, My.Settings.trapdoor, My.Settings.background, My.Settings.path)
-                        Case 15274 'trapdoor netosw closed
-                            Maze.drawTD(cX, cY, True, False, My.Settings.trapdoor, My.Settings.background, My.Settings.path)
-                        Case 15275 'trapdoor nwtose open
-                            Maze.drawTD(cX, cY, False, True, My.Settings.trapdoor, My.Settings.background, My.Settings.path)
-                        Case 15277 'trapdoor nwtose closed
-                            Maze.drawTD(cX, cY, False, False, My.Settings.trapdoor, My.Settings.background, My.Settings.path)
-                        Case 15281 To 15290 ' trash
-                            Maze.drawTrash(cX, cY, My.Settings.junk)
-                        Case 58216 ' Valor
-                            Maze.drawShrine(cX, cY, Color.LightBlue, My.Settings.shrineoutline)
-                        Case 59391 ' cont
-                            Maze.drawShrine(cX, cY, Color.Red, My.Settings.shrineoutline)
-                        Case 59392 ' indi
-                            Maze.drawShrine(cX, cY, Color.LimeGreen, My.Settings.shrineoutline)
-                        Case 59393 ' bribe
-                            Maze.drawShrine(cX, cY, Color.BlueViolet, My.Settings.shrineoutline)
-                        Case 59394 ' Weld
-                            Maze.drawShrine(cX, cY, Color.Yellow, My.Settings.shrineoutline)
-                        Case 59395 ' LOE
-                            Maze.drawShrine(cX, cY, Color.LimeGreen, My.Settings.shrineoutline)
-                        Case 59396 ' Kindness
-                            Maze.drawShrine(cX, cY, Color.LimeGreen, My.Settings.shrineoutline)
-                        Case 59397 ' Vit
-                            Maze.drawShrine(cX, cY, Color.LimeGreen, My.Settings.shrineoutline)
-                        Case 59398 ' brave
-                            Maze.drawShrine(cX, cY, Color.LimeGreen, My.Settings.shrineoutline)
-                        Case 59399 ' Sec
-                            Maze.drawShrine(cX, cY, Color.BlueViolet, My.Settings.shrineoutline)
-                        Case 59400, 59401 ' Jobless
-                            Maze.drawShrine(cX, cY, Color.BlueViolet, My.Settings.shrineoutline)
-                        Case 59403 ' Death
-                            Maze.drawShrine(cX, cY, Color.Black, My.Settings.shrineoutline)
 
-                    End Select
+                ' Only skip when flags exist and visibility bit is not set
+                If flags <> 0 AndAlso (flags And MazeConstants.VISIBILITY_FLAG) = 0 Then
+                    Continue For 'not visible
+                End If
+
+                ' Gas traps detection (fsprite2)
+                If fsprite2 <> 0 Then
+                    If (fsprite2 = 15270 Or fsprite2 = 15271) Or (fsprite2 >= 15291 And fsprite2 <= 15295) Then
+                        If Not Maze.hasGT(cX, cY) Then
+                            If My.Settings.sysBeepOnGT Then Beep()
+                            Maze.drawGT(cX, cY, My.Settings.gastrap)
+                        End If
+                        gtInRange = True
+                    End If
+                End If
+                ' Trap doors detection (isprite)
+                If isprite <> 0 Then
+                    If (isprite >= 15272 And isprite <= 15277) Then
+                        Maze.drawTD(cX, cY, False, False, My.Settings.trapdoor, My.Settings.background, My.Settings.path)
+                    End If
+                    ' Shrines detection (isprite)
+                    If (isprite = 15268 Or isprite = 15269) Then
+                        Maze.drawShrine(cX, cY, Color.Purple, My.Settings.shrineoutline)
+                    End If
+                    ' Junk detection (isprite)
+                    If (isprite >= 15279 And isprite <= 15326) Then
+                        Maze.drawTrash(cX, cY, My.Settings.junk)
+                    End If
                 End If
             Next
         Next
@@ -519,7 +512,6 @@ Public Class frmMain
     Private Async Sub tmrActive_Tick(sender As Object, e As EventArgs) Handles tmrActive.Tick
         If IPC.RequestActivation Then
             IPC.RequestActivation = 0
-            Debug.Print("IPC.requestActivation")
 
             If Me.WindowState = FormWindowState.Minimized Then
                 Const WM_SYSCOMMAND = &H112
@@ -573,172 +565,33 @@ Public Class frmMain
 
     'End Sub
 
-    'Dim configDir = IO.Path.GetDirectoryName(ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal).FilePath)
-    'Private Sub ImportToolStripMenuItem_Click(sender As Object, e As EventArgs)
-
-    '    Debug.Print(configDir)
-    '    Using dialog As New OpenFileDialog With {
-    '        .Title = "Import Settings - RDT",
-    '        .InitialDirectory = Environment.SpecialFolder.Desktop,
-    '        .Multiselect = True,
-    '        .DefaultExt = ".RDT.config",
-    '        .CheckFileExists = True,
-    '        .CheckPathExists = True,
-    '        .Filter = "RDT Config Files (*.RDT.config)|*.RDT.config|All Files (*.*)|*.*",
-    '        .FilterIndex = 0
-    '        }
-    '        If dialog.ShowDialog() <> DialogResult.OK Then Exit Sub
-
-    '        importFiles(dialog.FileNames)
-    '    End Using
-    'End Sub
-    'Private Sub importFiles(files() As String, Optional silent As Boolean = False)
-    '    Dim validCount As Integer = 0
-    '    Dim validSingleName As String = ""
-    '    For Each file In files
-
-    '        If System.IO.Path.GetExtension(file) <> ".config" Then Continue For
-    '        If file = configDir & "user.config" Then Continue For
-
-    '        If testConfig(file) Then
-    '            FileIO.FileSystem.CopyFile(file, configDir & "\import\" & System.IO.Path.GetFileName(file), True)
-    '            validCount += 1
-    '            validSingleName = System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileNameWithoutExtension(file))
-    '        End If
-    '    Next
-    '    Try
-    '        My.Computer.FileSystem.CopyDirectory(configDir & "\import", configDir, If(Not silent, FileIO.UIOption.AllDialogs, FileIO.UIOption.OnlyErrorDialogs))
-    '    Catch
-    '        validCount = 0
-    '    Finally
-    '        If FileIO.FileSystem.DirectoryExists(configDir & "\import") Then
-    '            FileIO.FileSystem.DeleteDirectory(configDir & "\import", FileIO.DeleteDirectoryOption.DeleteAllContents)
-    '        End If
-    '    End Try
-    '    If validCount = 1 Then
-    '        LoadConfigToolStripMenuItem_Click(New ToolStripMenuItem With {.Tag = configDir & "\" & validSingleName & ".RDT.config"}, Nothing)
-    '        My.Settings.SelectedConfig = validSingleName
-    '    End If
-    'End Sub
-    'Private Sub frmMain_DragEnter(sender As Object, e As DragEventArgs) Handles Me.DragEnter
-    '    Dim files As List(Of String) = New List(Of String)
-    '    Dim drops() As String = e.Data.GetData(DataFormats.FileDrop)
-    '    For Each file As String In drops
-    '        If FileIO.FileSystem.DirectoryExists(file) Then
-    '            For Each subfile In My.Computer.FileSystem.GetFiles(file, FileIO.SearchOption.SearchTopLevelOnly, {"*.RDT.config"})
-    '                files.Add(subfile)
-    '                If files.Count > 0 Then Exit For
-    '            Next
-    '        Else
-    '            files.Add(file)
-    '        End If
-    '        If files.Count > 0 Then Exit For
-    '    Next
-    '    If files.Any(Function(f) f.EndsWith("RDT.config")) Then
-    '        e.Effect = DragDropEffects.Copy
-    '    End If
-    'End Sub
-
-    'Private Sub frmMain_DragDrop(sender As Object, e As DragEventArgs) Handles Me.DragDrop
-    '    Dim files As List(Of String) = New List(Of String)
-    '    Dim drops() As String = e.Data.GetData(DataFormats.FileDrop)
-    '    For Each file As String In drops
-    '        If FileIO.FileSystem.DirectoryExists(file) Then
-    '            For Each subfile In My.Computer.FileSystem.GetFiles(file, FileIO.SearchOption.SearchTopLevelOnly, {"*.RDT.config"})
-    '                files.Add(subfile)
-    '            Next
-    '        Else
-    '            files.Add(file)
-    '        End If
-
-    '    Next
-    '    importFiles(files.ToArray)
-    'End Sub
-    'Private Function testConfig(file As String) As Boolean
-    '    Dim valid As Boolean = False
-
-    '    My.Settings.Save()
-
-    '    FileIO.FileSystem.CopyFile(configDir & "\user.config", configDir & "\backup.config", True)
-
-
-    '    FileIO.FileSystem.CopyFile(file, configDir & "\user.config", True)
-    '    Try
-    '        My.Settings.Reload()
-    '        Dim dummy As String = My.Settings.SelectedConfig
-    '        valid = True
-    '    Catch
-    '        valid = False
-    '    Finally
-    '        FileIO.FileSystem.CopyFile(configDir & "\backup.config", configDir & "\user.config", True)
-    '        FileIO.FileSystem.DeleteFile(configDir & "\backup.config")
-    '        My.Settings.Reload()
-    '    End Try
-
-    '    Return valid
-    'End Function
-
 
     Private Function isAstoniaClass(pp As Process) As Boolean
         Dim wndClass As String() = My.Settings.className.Split({"|"}, StringSplitOptions.RemoveEmptyEntries)
         For i As Integer = 0 To UBound(wndClass)
             wndClass(i) = Trim(wndClass(i))
         Next
-        'Debug.Print("""" & wndClass(0) & """")
         Return wndClass.Contains(GetWindowClass(pp.MainWindowHandle))
     End Function
 
+    ''' <summary>
+    ''' Handle form resize to scale the maze display
+    ''' </summary>
+    Private Sub frmMain_Resize(sender As Object, e As EventArgs) Handles MyBase.Resize
+        If Maze IsNot Nothing Then
+            ' Calculate the available display area (exclude control bar height)
+            Dim displayHeight As Integer = Me.ClientSize.Height - 25 ' 25 pixels for controls at bottom
+            Dim displayWidth As Integer = Me.ClientSize.Width
+            
+            ' Ensure minimum size
+            If displayHeight > 0 AndAlso displayWidth > 0 Then
+                Maze.ResizeDisplay(displayWidth, displayHeight)
+                Me.BackgroundImage = Maze.display
+                Me.Invalidate()
+            End If
+        End If
+    End Sub
 
-
-    'Private Sub LoadToolStripMenuItem_DropDownOpening(sender As ToolStripMenuItem, e As EventArgs) Handles LoadToolStripMenuItem.DropDownOpening
-    '    sender.DropDownItems.Clear()
-    '    If System.IO.Directory.Exists(configDir) Then
-
-    '        For Each config As String In My.Computer.FileSystem.GetFiles(configDir, FileIO.SearchOption.SearchTopLevelOnly, {"*.RDT.config"})
-    '            Debug.Print(config)
-    '            Dim name As String = System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileNameWithoutExtension(config))
-    '            Debug.Print(name)
-    '            If name = "user" Then Continue For
-    '            Dim item As ToolStripMenuItem = sender.DropDownItems.Add(name, Nothing, AddressOf LoadConfigToolStripMenuItem_Click)
-    '            item.Tag = config
-
-    '            If name.ToUpper = My.Settings.SelectedConfig.ToUpper Then
-    '                item.Checked = True
-    '            End If
-    '        Next
-    '    End If
-    '    'If sender.DropDownItems.Count = 0 Then sender.DropDownItems.Add("(None)").Enabled = False
-    '    sender.DropDownItems.Add(New ToolStripSeparator)
-    '    sender.DropDownItems.Add("Open Config Folder...", Nothing, AddressOf OpenConfigFolderToolStripMenuItem_Click)
-    'End Sub
-
-    'Private Sub OpenConfigFolderToolStripMenuItem_Click(sender As Object, e As EventArgs)
-    '    My.Settings.Save()
-    '    Dim pp As New Process With {.StartInfo = New ProcessStartInfo With {.FileName = configDir}}
-    '    Try
-    '        pp.Start()
-    '    Catch
-
-    '    End Try
-    'End Sub
-
-    'Private Sub LoadConfigToolStripMenuItem_Click(sender As ToolStripMenuItem, e As EventArgs) 'handles LoadConigToolStripMenuItem.Click
-    '    Debug.Print(sender.Text)
-
-    '    frmSettings.Close()
-    '    frmV2.Close()
-    '    'Make backup
-
-    '    FileIO.FileSystem.CopyFile(configDir & "\user.config", configDir & "\backup.config", True)
-
-    '    FileIO.FileSystem.CopyFile(sender.Tag, configDir & "\user.config", True)
-
-    '    Try
-    '        My.Settings.Reload()
-    '        My.Settings.SelectedConfig = sender.Text
-    '    Catch
-    '        FileIO.FileSystem.CopyFile(configDir & "\backup.config", configDir & "\user.config", True)
-    '        MessageBox.Show(System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileNameWithoutExtension(sender.Tag)) & " Config Invalid/Corrupted", "Error")
     '        My.Settings.Reload()
     '    Finally
     '        FileIO.FileSystem.DeleteFile(configDir & "\backup.config")
@@ -756,7 +609,6 @@ Module extensions
         Try
             Return AltPP IsNot Nothing AndAlso Not AltPP.HasExited
         Catch e As Exception
-            Debug.Print("elevating " & AltPP.Id)
             frmMain.runAsAdmin()
             End
         End Try

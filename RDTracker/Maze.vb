@@ -1,4 +1,6 @@
 ﻿Public Class Maze
+    Implements IDisposable
+
     Public display As New Bitmap(255, 255)
     Private buffer As New Bitmap(255, 255)
     Private v2Over As New Bitmap(255, 255)
@@ -12,17 +14,20 @@
 
     Public cata As Boolean
     Private size, div, bound As Integer
+    Private scaleX As Double = 1.0
+    Private scaleY As Double = 1.0
     Private Boxes(,,) As Rectangle
     Private gasTraps(,,) As Rectangle
     Private Walls(,,) As Rectangle
     Private TrapDoors(,) As Point
+    Private disposed As Boolean = False
 
     Public Sub New(Optional cata As Boolean = False)
         Clear(My.Settings.background)
         Me.cata = cata
-        size = If(cata, 3, 4)
-        div = 141 - 20 * size '81 or 61
-        bound = 34 - 5 * size '19 or 14
+        size = If(cata, MazeConstants.CATA_SIZE, MazeConstants.RD_SIZE)
+        div = If(cata, MazeConstants.CATA_DIV, MazeConstants.RD_DIV)
+        bound = If(cata, MazeConstants.CATA_BOUND, MazeConstants.RD_BOUND)
         Boxes = New Rectangle(bound, bound, 2) {}
         For Y = 0 To bound
             For X = 0 To bound
@@ -61,11 +66,12 @@
     End Sub
 
     Private Function toMaz(GameX As Integer, GameY As Integer) As Point
-        Return New Point(((GameX - 2) Mod div) * size, ((GameY - 2) Mod div) * size)
+        Return New Point(CInt(((GameX - MazeConstants.COORD_OFFSET) Mod div) * size * scaleX), _
+                        CInt(((GameY - MazeConstants.COORD_OFFSET) Mod div) * size * scaleY))
     End Function
 
     Public Function getNum(GameX As Integer, GameY As Integer) As Integer
-        Return ((GameX - 2) \ div + 1) + (((GameY - 2) \ div) * size)
+        Return ((GameX - MazeConstants.COORD_OFFSET) \ div + 1) + (((GameY - MazeConstants.COORD_OFFSET) \ div) * size)
     End Function
 
     Public Sub plotMaze(GameX As Integer, GameY As Integer, col As Drawing.Color)
@@ -80,7 +86,7 @@
 
     Public Sub plotPlayer(GameX As Integer, GameY As Integer, col As Color)
         Dim Player As Point = toMaz(GameX, GameY)
-        grDisp.FillRectangle(New SolidBrush(col), Player.X, Player.Y, size, size)
+        grDisp.FillRectangle(New SolidBrush(col), Player.X, Player.Y, CInt(size * scaleX), CInt(size * scaleY))
     End Sub
     Private ptZero As New Point(0, 0)
 
@@ -99,7 +105,7 @@
 
     Public Sub drawTrash(gameX As Integer, gameY As Integer, col As Drawing.Color)
         Dim target As Point = toMaz(gameX, gameY)
-        grBuff.FillRectangle(New SolidBrush(col), target.X, target.Y, size, size)
+        grBuff.FillRectangle(New SolidBrush(col), target.X, target.Y, CInt(size * scaleX), CInt(size * scaleY))
     End Sub
 
     'Public Sub drawfloor(gameX As Integer, gameY As Integer)
@@ -112,17 +118,14 @@
     Public Sub drawShrine(gameX As Integer, gameY As Integer, col As Color, outline As Color)
         Dim target As Point = toMaz(gameX, gameY)
 
-        grOver.FillRectangle(New SolidBrush(outline), New Rectangle(target.X - 2, target.Y - 2, 8, 8))
-        grOver.FillRectangle(New SolidBrush(col), New Rectangle(target.X, target.Y, 4, 4))
+        grOver.FillRectangle(New SolidBrush(outline), New Rectangle(target.X - 2, target.Y - 2, CInt(8 * scaleX), CInt(8 * scaleY)))
+        grOver.FillRectangle(New SolidBrush(col), New Rectangle(target.X, target.Y, CInt(4 * scaleX), CInt(4 * scaleY)))
 
 
     End Sub
 
     Public Sub drawWall(gameX As Integer, gameY As Integer, col As Color)
         Dim target As Point = toMaz(gameX, gameY)
-        If target.X Mod size * 2 > 0 AndAlso target.Y Mod size * 2 > 0 Then
-            Exit Sub
-        End If
         For Each wall As Rectangle In Walls
             If wall.Contains(target) Then
                 grUnde.FillRectangle(New SolidBrush(col), wall)
@@ -146,16 +149,16 @@
         Dim door As Drawing.Size
         Dim target As Point = toMaz(gameX, gameY)
         If NEtoSW Then
-            yOff = -size
-            door = New Size(size, size * 3)
+            yOff = -CInt(size * scaleY)
+            door = New Size(CInt(size * scaleX), CInt(size * 3 * scaleY))
         Else
-            xOff = -size
-            door = New Size(size * 3, size)
+            xOff = -CInt(size * scaleX)
+            door = New Size(CInt(size * 3 * scaleX), CInt(size * scaleY))
         End If
         For Each trap As Point In TrapDoors
             If trap = target Then
                 grOver.FillRectangle(New SolidBrush(col), New Rectangle(New Point(trap.X + xOff, trap.Y + yOff), door))
-                grOver.FillRectangle(New SolidBrush(If(open, opencol, closedcol)), trap.X, trap.Y, size, size)
+                grOver.FillRectangle(New SolidBrush(If(open, opencol, closedcol)), trap.X, trap.Y, CInt(size * scaleX), CInt(size * scaleY))
             End If
         Next
     End Sub
@@ -196,9 +199,127 @@
         Return False
     End Function
     Public Function isYendor(GameX As Integer, GameY As Integer) As Boolean
-        If Not cata AndAlso (GameX >= 2 And GameX <= 43 And GameY >= 248 And GameY <= 252) Then
+        If Not cata AndAlso (GameX >= MazeConstants.YENDOR_MIN_X And GameX <= MazeConstants.YENDOR_MAX_X And _
+                            GameY >= MazeConstants.YENDOR_MIN_Y And GameY <= MazeConstants.YENDOR_MAX_Y) Then
             Return True
         End If
         Return False
     End Function
+
+    ''' <summary>
+    ''' Resize the display bitmaps and recalculate all drawing coordinates
+    ''' </summary>
+    Public Sub ResizeDisplay(newWidth As Integer, newHeight As Integer)
+        ' Calculate scale factor to maintain proportions
+        scaleX = newWidth / 255.0
+        scaleY = newHeight / 255.0
+        
+        ' Dispose old graphics and bitmaps
+        Try
+            If grDisp IsNot Nothing Then grDisp.Dispose()
+            If grBuff IsNot Nothing Then grBuff.Dispose()
+            If grOver IsNot Nothing Then grOver.Dispose()
+            If grUnde IsNot Nothing Then grUnde.Dispose()
+            If display IsNot Nothing Then display.Dispose()
+            If buffer IsNot Nothing Then buffer.Dispose()
+            If v2Over IsNot Nothing Then v2Over.Dispose()
+            If v2Unde IsNot Nothing Then v2Unde.Dispose()
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine($"Maze.ResizeDisplay dispose error: {ex.Message}")
+        End Try
+        
+        ' Create new bitmaps with window dimensions
+        display = New Bitmap(newWidth, newHeight)
+        buffer = New Bitmap(newWidth, newHeight)
+        v2Over = New Bitmap(newWidth, newHeight)
+        v2Unde = New Bitmap(newWidth, newHeight)
+        
+        ' Create new graphics objects
+        grDisp = Graphics.FromImage(display)
+        grBuff = Graphics.FromImage(buffer)
+        grOver = Graphics.FromImage(v2Over)
+        grUnde = Graphics.FromImage(v2Unde)
+        
+        ' Recalculate all rectangles with scaling
+        Boxes = New Rectangle(bound, bound, 2) {}
+        For Y = 0 To bound
+            For X = 0 To bound
+                Boxes(X, Y, 0) = New Rectangle(CInt(size * (4 * X + 1) * scaleX), CInt(size * (4 * Y + 1) * scaleY), CInt(size * 3 * scaleX), CInt(size * 3 * scaleY))
+                Boxes(X, Y, 1) = New Rectangle(CInt(size * (4 * X + 1) * scaleX), CInt(size * 4 * Y * scaleY), CInt(size * 3 * scaleX), CInt(size * scaleY))
+                Boxes(X, Y, 2) = New Rectangle(CInt(size * 4 * X * scaleX), CInt(size * (4 * Y + 1) * scaleY), CInt(size * scaleX), CInt(size * 3 * scaleY))
+            Next
+        Next
+        
+        Walls = New Rectangle(bound + 1, bound + 1, 2) {}
+        For Y = 0 To bound + 1
+            For X = 0 To bound + 1
+                Walls(X, Y, 0) = New Rectangle(CInt(size * 4 * X * scaleX), CInt(size * 4 * Y * scaleY), CInt(size * scaleX), CInt(size * scaleY))
+                Walls(X, Y, 1) = New Rectangle(CInt(size * (4 * X + 1) * scaleX), CInt(size * 4 * Y * scaleY), CInt(size * 3 * scaleX), CInt(size * scaleY))
+                Walls(X, Y, 2) = New Rectangle(CInt(size * 4 * X * scaleX), CInt(size * (4 * Y + 1) * scaleY), CInt(size * scaleX), CInt(size * 3 * scaleY))
+            Next
+        Next
+        
+        If Not cata Then
+            TrapDoors = New Point(bound, bound) {}
+            For Y = 0 To bound
+                For X = 0 To bound
+                    TrapDoors(X, Y) = New Point(CInt(MazeConstants.TRAP_DOOR_GRID_MULT_X * X * scaleX + MazeConstants.TRAP_DOOR_OFFSET_X * scaleX), _
+                                               CInt(MazeConstants.TRAP_DOOR_GRID_MULT_Y * Y * scaleY + MazeConstants.TRAP_DOOR_OFFSET_Y * scaleY))
+                Next
+            Next
+            
+            gasTraps = New Rectangle(bound, bound, 1) {}
+            For Y = 0 To bound
+                For X = 0 To bound
+                    gasTraps(X, Y, 0) = New Rectangle(CInt(4 * (4 * X + 1) * scaleX), CInt((4 * 4 * Y * scaleY) + MazeConstants.TRAP_DOOR_OFFSET_Y * scaleY), _
+                                                     CInt(MazeConstants.GAS_TRAP_WIDTH * scaleX), CInt(MazeConstants.GAS_TRAP_HEIGHT * scaleY))
+                    gasTraps(X, Y, 1) = New Rectangle(CInt((4 * 4 * Y * scaleY) + MazeConstants.TRAP_DOOR_OFFSET_Y * scaleY), CInt(4 * (4 * X + 1) * scaleX), _
+                                                     CInt(MazeConstants.GAS_TRAP_HEIGHT * scaleY), CInt(MazeConstants.GAS_TRAP_WIDTH * scaleX))
+                Next
+            Next
+        End If
+        
+        ' Clear with background color
+        Clear(My.Settings.background)
+    End Sub
+
+    ''' <summary>
+    ''' Properly dispose of graphics resources
+    ''' </summary>
+    Public Sub Dispose() Implements IDisposable.Dispose
+        Dispose(True)
+        GC.SuppressFinalize(Me)
+    End Sub
+
+    ''' <summary>
+    ''' Protected dispose method for proper resource cleanup
+    ''' </summary>
+    Protected Sub Dispose(disposing As Boolean)
+        If Not disposed Then
+            If disposing Then
+                Try
+                    If grDisp IsNot Nothing Then grDisp.Dispose()
+                    If grBuff IsNot Nothing Then grBuff.Dispose()
+                    If grOver IsNot Nothing Then grOver.Dispose()
+                    If grUnde IsNot Nothing Then grUnde.Dispose()
+                    If display IsNot Nothing Then display.Dispose()
+                    If buffer IsNot Nothing Then buffer.Dispose()
+                    If v2Over IsNot Nothing Then v2Over.Dispose()
+                    If v2Unde IsNot Nothing Then v2Unde.Dispose()
+                Catch ex As Exception
+                    System.Diagnostics.Debug.WriteLine($"Maze.Dispose error: {ex.Message}")
+                End Try
+            End If
+            disposed = True
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' Finalizer to ensure resources are cleaned up if not explicitly disposed
+    ''' </summary>
+    Protected Overrides Sub Finalize()
+        Dispose(False)
+        MyBase.Finalize()
+    End Sub
+
 End Class

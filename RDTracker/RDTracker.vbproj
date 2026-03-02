@@ -11,7 +11,7 @@
     <AssemblyName>RDTracker</AssemblyName>
     <FileAlignment>512</FileAlignment>
     <MyType>WindowsForms</MyType>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <PublishUrl>publish\</PublishUrl>
@@ -133,7 +133,11 @@
     </Compile>
     <Compile Include="IPC.vb" />
     <Compile Include="Maze.vb" />
+    <Compile Include="MazeConstants.vb" />
     <Compile Include="MemoryManager.vb" />
+    <Compile Include="MemoryUtilities.vb" />
+    <Compile Include="SharedStructures.vb" />
+    <Compile Include="ValidationHelpers.vb" />
     <Compile Include="My Project\AssemblyInfo.vb" />
     <Compile Include="My Project\Application.Designer.vb">
       <AutoGen>True</AutoGen>

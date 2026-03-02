@@ -34,6 +34,7 @@ Partial Class frmMain
         '
         'btnReset
         '
+        Me.btnReset.Anchor = CType((System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left), System.Windows.Forms.AnchorStyles)
         Me.btnReset.DialogResult = System.Windows.Forms.DialogResult.Cancel
         Me.btnReset.Location = New System.Drawing.Point(0, 243)
         Me.btnReset.Name = "btnReset"
@@ -44,6 +45,7 @@ Partial Class frmMain
         '
         'cboAlt
         '
+        Me.cboAlt.Anchor = CType((System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left), System.Windows.Forms.AnchorStyles)
         Me.cboAlt.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
         Me.cboAlt.FormattingEnabled = True
         Me.cboAlt.Items.AddRange(New Object() {"Someone"})
@@ -54,6 +56,7 @@ Partial Class frmMain
         '
         'lblEnter
         '
+        Me.lblEnter.Anchor = CType((System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left), System.Windows.Forms.AnchorStyles)
         Me.lblEnter.AutoSize = True
         Me.lblEnter.ForeColor = System.Drawing.Color.White
         Me.lblEnter.Location = New System.Drawing.Point(171, 248)
@@ -68,6 +71,7 @@ Partial Class frmMain
         '
         'btnSettings
         '
+        Me.btnSettings.Anchor = CType((System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left), System.Windows.Forms.AnchorStyles)
         Me.btnSettings.BackColor = System.Drawing.Color.Transparent
         Me.btnSettings.FlatStyle = System.Windows.Forms.FlatStyle.Flat
         Me.btnSettings.Image = Global.RDTracker.My.Resources.Resources.gear_wheel
@@ -86,20 +90,18 @@ Partial Class frmMain
         Me.AllowDrop = True
         Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 13.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
-        Me.BackColor = System.Drawing.Color.Black
-        Me.BackgroundImageLayout = System.Windows.Forms.ImageLayout.None
         Me.CancelButton = Me.btnReset
-        Me.ClientSize = New System.Drawing.Size(244, 266)
+        Me.ClientSize = New System.Drawing.Size(266, 266)
         Me.Controls.Add(Me.btnSettings)
         Me.Controls.Add(Me.lblEnter)
         Me.Controls.Add(Me.cboAlt)
         Me.Controls.Add(Me.btnReset)
         Me.DoubleBuffered = True
-        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable
         Me.HelpButton = True
         Me.Icon = CType(resources.GetObject("$this.Icon"), System.Drawing.Icon)
         Me.KeyPreview = True
-        Me.MaximizeBox = False
+        Me.MaximizeBox = True
         Me.Name = "frmMain"
         Me.ShowIcon = False
         Me.Text = "RD Tracker"
